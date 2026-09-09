@@ -5,6 +5,7 @@ import 'services/cbr_api.dart';
 import 'services/tbank_api.dart';
 import 'constants.dart';
 import 'screens/settings_screen.dart';
+import 'widgets/history_chart.dart'; // добавьте в начале файла
 
 void main() {
   runApp(MyApp());
@@ -156,7 +157,6 @@ class _HomeScreenState extends State<HomeScreen> {
     buffer.writeln(
         'loss %  | 0.00  | ${lossBybit.toStringAsFixed(2)}  | ${lossTbankQr.toStringAsFixed(2)}  | ${lossTbankTransfer.toStringAsFixed(2)}');
 
-    buffer.writeln('\n💡 Для Bybit USDT/RUB = USD/RUB × 1.005');
 
     // Расчёт стоимости для введённой суммы
     final amountVnd = _amountThousands * 1000.0;
@@ -204,9 +204,32 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
       body: Padding(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.all(12.0), // уменьшил общий отступ
         child: Column(
           children: [
+            // Таблица – занимает ровно столько, сколько нужно (без прокрутки)
+            Flexible(
+              fit: FlexFit.loose,
+              child: Container(
+                width: double.infinity,
+                padding: EdgeInsets.all(8), // уменьшил отступы внутри
+                decoration: BoxDecoration(
+                  color: Colors.grey[900],
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  _resultText,
+                  style: TextStyle(
+                    fontSize: 12, // уменьшил шрифт для компактности
+                    color: Colors.white,
+                    fontFamily: 'monospace',
+                  ),
+                  textAlign: TextAlign.left,
+                ),
+              ),
+            ),
+            SizedBox(height: 6),
+            // Поле ввода и кнопка – фиксированная высота
             Row(
               children: [
                 Expanded(
@@ -214,6 +237,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     decoration: InputDecoration(
                       labelText: 'Сумма (тыс. VND)',
                       border: OutlineInputBorder(),
+                      contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8), // компактное поле
                     ),
                     keyboardType: TextInputType.number,
                     onChanged: (value) {
@@ -227,40 +251,23 @@ class _HomeScreenState extends State<HomeScreen> {
                     },
                   ),
                 ),
-                SizedBox(width: 16),
+                SizedBox(width: 8),
                 ElevatedButton(
                   onPressed: () async {
                     await Navigator.push(
                       context,
                       MaterialPageRoute(builder: (_) => SettingsScreen()),
                     );
-                    _loadData(); // перезагружаем данные после возврата
+                    _loadData();
                   },
                   child: Text('Ввести курсы'),
                 ),
               ],
             ),
-            SizedBox(height: 16),
+            SizedBox(height: 6),
+            // График – занимает всё оставшееся пространство
             Expanded(
-              child: SingleChildScrollView(
-                child: Container(
-                  width: double.infinity,
-                  padding: EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.grey[900],
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    _resultText,
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: Colors.white,
-                      fontFamily: 'monospace',
-                    ),
-                    textAlign: TextAlign.left,
-                  ),
-                ),
-              ),
+              child: HistoryChart(),
             ),
           ],
         ),
