@@ -6,7 +6,7 @@ import '../services/database_helper.dart';
 import '../constants.dart';
 
 class CbrApiClient {
-  static const String _url = 'https://www.cbr.ru/scripts/XML_daily.asp';
+  static const String _url = 'http://www.cbr-xml-daily.ru/daily_utf8.xml';
   static const String _lastUpdateKey = 'cbr_last_update_date'; // ключ для SharedPreferences
 
   /// Проверить, был ли уже запрос сегодня

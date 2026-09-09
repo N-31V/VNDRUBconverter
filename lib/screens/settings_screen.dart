@@ -19,6 +19,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void initState() {
     super.initState();
+    // Загружаем последние значения после первой отрисовки
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadLastValues();
+    });
     _updateCbrRates();
   }
 
@@ -28,6 +32,38 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _tbankQrController.dispose();
     _tbankTransferController.dispose();
     super.dispose();
+  }
+
+  // Загружаем последние сохранённые курсы и подставляем в поля
+  Future<void> _loadLastValues() async {
+    try {
+      final db = DatabaseHelper();
+      final bybitQr = await db.getLatestRate(Sources.bybitQr, Currencies.usdt, Currencies.vnd);
+      final tbankQr = await db.getLatestRate(Sources.tbankQr, Currencies.vnd, Currencies.rub);
+      final tbankTransfer = await db.getLatestRate(Sources.tbankTransfer, Currencies.vnd, Currencies.rub);
+
+      if (!mounted) return;
+      setState(() {
+        if (bybitQr != null) {
+          _bybitQrController.text = bybitQr.value.toStringAsFixed(0);
+        } else {
+          _bybitQrController.text = ''; // если нет — оставляем пустым, placeholder сработает
+        }
+        if (tbankQr != null) {
+          _tbankQrController.text = (tbankQr.value * 10000).toStringAsFixed(2);
+        } else {
+          _tbankQrController.text = '';
+        }
+        if (tbankTransfer != null) {
+          _tbankTransferController.text = (tbankTransfer.value * 10000).toStringAsFixed(2);
+        } else {
+          _tbankTransferController.text = '';
+        }
+      });
+    } catch (e) {
+      print('Ошибка загрузки последних курсов: $e');
+      // Не показываем ошибку пользователю, просто оставляем поля пустыми
+    }
   }
 
   Future<void> _updateCbrRates() async {
