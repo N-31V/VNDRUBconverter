@@ -4,36 +4,29 @@ import 'package:path/path.dart';
 import '../models/rate.dart';
 
 class DatabaseHelper {
-  // Singleton: один экземпляр на всё приложение
   static final DatabaseHelper _instance = DatabaseHelper._internal();
   factory DatabaseHelper() => _instance;
   DatabaseHelper._internal();
 
   static Database? _database;
+  static const double _epsilon = 1e-6; // допуск для сравнения double
 
-  // Геттер для получения базы данных (если не открыта, открывает)
   Future<Database> get database async {
     if (_database != null) return _database!;
     _database = await _initDatabase();
     return _database!;
   }
 
-  // Инициализация базы
   Future<Database> _initDatabase() async {
-    // Получаем путь к директории приложения
     final directory = await getApplicationDocumentsDirectory();
-    // Создаём полный путь к файлу базы данных
     final path = join(directory.path, 'currency_tracker.db');
-
-    // Открываем базу (если файла нет, он создастся автоматически)
     return await openDatabase(
       path,
       version: 1,
-      onCreate: _onCreate, // вызывается при первом создании БД
+      onCreate: _onCreate,
     );
   }
 
-  // Метод создания таблицы
   Future<void> _onCreate(Database db, int version) async {
     await db.execute('''
       CREATE TABLE rates (
@@ -45,23 +38,25 @@ class DatabaseHelper {
         timestamp TEXT NOT NULL
       )
     ''');
-    // Можно добавить индексы для ускорения запросов, пока не нужно
   }
 
-  // ---- CRUD операции ----
-
-  // Вставка нового курса
+  // Вставка нового курса (безусловная)
   Future<void> insertRate(Rate rate) async {
     final db = await database;
-    await db.insert(
-      'rates',
-      rate.toMap(),
-      conflictAlgorithm: ConflictAlgorithm.replace, // если такой id есть, заменить
-    );
+    await db.insert('rates', rate.toMap());
   }
 
-  // Получение последнего курса по источнику
-  /// Получить последний курс для заданной пары и источника
+  // Вставка только если значение изменилось
+  Future<void> insertRateIfChanged(Rate newRate) async {
+    final existing = await getLatestRate(newRate.source, newRate.base, newRate.quote);
+    if (existing != null && (existing.value - newRate.value).abs() < _epsilon) {
+      // Значение не изменилось – пропускаем
+      print('Курс ${newRate.source} ${newRate.base}/${newRate.quote} не изменился, пропускаем вставку');
+      return;
+    }
+    await insertRate(newRate);
+  }
+
   Future<Rate?> getLatestRate(String source, String base, String quote) async {
     final db = await database;
     final List<Map<String, dynamic>> maps = await db.query(
@@ -77,7 +72,6 @@ class DatabaseHelper {
     return null;
   }
 
-  // Получение всех курсов за последний час (можно использовать для кэша)
   Future<List<Rate>> getRatesSince(DateTime since) async {
     final db = await database;
     final List<Map<String, dynamic>> maps = await db.query(

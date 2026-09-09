@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'services/database_helper.dart';
+import 'services/cbr_api.dart';
+import 'services/tbank_api.dart';
 import 'constants.dart';
 import 'screens/settings_screen.dart';
 
-void main() async {
+void main() {
   runApp(MyApp());
 }
 
@@ -27,18 +30,42 @@ class _HomeScreenState extends State<HomeScreen> {
   double? _cbrUsd;
   double? _cbrVnd;
   double? _bybitUsdtVnd;
-  double? _tbankQrVndRub;
-  double? _tbankTransferVndRub;
+  double? _tbankQrVndRub; // VND за 1 RUB (из БД)
+  double? _tbankTransferVndRub; // VND за 1 RUB
 
   int _amountThousands = 10;
   String _resultText = 'Загрузка данных...';
+  bool _isLoading = false;
 
   @override
   void initState() {
     super.initState();
-    _loadData();
+    _refreshAllRates(); // обновляем при запуске
   }
 
+
+  // Обновить все курсы (ЦБ + Т-Банк)
+  Future<void> _refreshAllRates() async {
+    setState(() => _isLoading = true);
+    try {
+      // Обновляем ЦБ
+      await CbrApiClient.fetchAndSaveRates();
+      // Обновляем Т-Банк
+      await TbankApiClient.fetchAndSaveTbankRates();
+      // Загружаем данные в UI
+      await _loadData();
+    } catch (e) {
+      setState(() {
+        _resultText = 'Ошибка обновления: $e';
+        _isLoading = false;
+      });
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+
+  // Загрузка данных из БД
   Future<void> _loadData() async {
     try {
       final db = DatabaseHelper();
@@ -46,8 +73,8 @@ class _HomeScreenState extends State<HomeScreen> {
       final cbrUsd = await db.getLatestRate(Sources.cbr, Currencies.usd, Currencies.rub);
       final cbrVnd = await db.getLatestRate(Sources.cbr, Currencies.vnd, Currencies.rub);
       final bybitQr = await db.getLatestRate(Sources.bybitQr, Currencies.usdt, Currencies.vnd);
-      final tbankQr = await db.getLatestRate(Sources.tbankQr, Currencies.vnd, Currencies.rub);
-      final tbankTransfer = await db.getLatestRate(Sources.tbankTransfer, Currencies.vnd, Currencies.rub);
+      final tbankQr = await db.getLatestRate(Sources.tbankQr, Currencies.rub, Currencies.vnd);
+      final tbankTransfer = await db.getLatestRate(Sources.tbankTransfer, Currencies.rub, Currencies.vnd);
 
       setState(() {
         _cbrUsd = cbrUsd?.value;
@@ -61,6 +88,7 @@ class _HomeScreenState extends State<HomeScreen> {
     } catch (e) {
       setState(() {
         _resultText = 'Ошибка загрузки данных: $e';
+        _isLoading = false;
       });
     }
   }
@@ -69,42 +97,42 @@ class _HomeScreenState extends State<HomeScreen> {
     if (_cbrUsd == null || _cbrVnd == null || _bybitUsdtVnd == null ||
         _tbankQrVndRub == null || _tbankTransferVndRub == null) {
       setState(() {
-        _resultText = 'Не все курсы загружены. Введите недостающие курсы через "Ввести курсы".';
+        _resultText = 'Не все курсы загружены. Обновите данные или введите вручную.';
       });
       return;
     }
 
     final double cbrUsdVal = _cbrUsd!;
-    final double cbrVndVal = _cbrVnd!;
+    final double cbrVndVal = _cbrVnd!; // VND/RUB (за 1 VND)
     final double bybitUsdtVndVal = _bybitUsdtVnd!;
-    final double tbankQrVal = _tbankQrVndRub!;
-    final double tbankTransferVal = _tbankTransferVndRub!;
+    final double tbankQrRubVnd = _tbankQrVndRub!; // VND/RUB (сколько VND за 1 RUB)
+    final double tbankTransferRubVnd = _tbankTransferVndRub!;
 
+    // Аппроксимация USDT/RUB = USD/RUB * 1.005
     const double usdtSpread = 1.005;
     final double usdtRubVal = cbrUsdVal * usdtSpread;
 
-    // Производные курсы
-    final cbrVndRub10000 = cbrVndVal * 10000;
+    // Производные курсы для каждого источника
+    final cbrVndRub10000 = cbrVndVal * 10000; // 10000 VND в рублях
     final cbrUsdRub = cbrUsdVal;
     final cbrUsdVnd = cbrUsdVal / cbrVndVal;
     final cbrRubVnd = 1 / cbrVndVal;
 
-    final bybitVndRub = usdtRubVal / bybitUsdtVndVal;
+    final bybitVndRub = usdtRubVal / bybitUsdtVndVal; // VND/RUB
     final bybitVndRub10000 = bybitVndRub * 10000;
     final bybitUsdRub = usdtRubVal;
     final bybitUsdVnd = bybitUsdtVndVal;
     final bybitRubVnd = 1 / bybitVndRub;
 
-    final tbankQrVndRub10000 = tbankQrVal * 10000;
-    final tbankQrRubVnd = 1 / tbankQrVal;
+    // Т-банк QR: у нас уже VND/RUB, пересчитываем
+    final tbankQrVndRub10000 = 10000 / tbankQrRubVnd; // сколько руб за 10000 VND
 
-    final tbankTransferVndRub10000 = tbankTransferVal * 10000;
-    final tbankTransferRubVnd = 1 / tbankTransferVal;
+    final tbankTransferVndRub10000 = 10000 / tbankTransferRubVnd;
 
-    // Потери в процентах (относительно ЦБ)
+    // Потери в процентах (относительно ЦБ VND/RUB)
     final lossBybit = ((bybitVndRub - cbrVndVal) / cbrVndVal) * 100;
-    final lossTbankQr = ((tbankQrVal - cbrVndVal) / cbrVndVal) * 100;
-    final lossTbankTransfer = ((tbankTransferVal - cbrVndVal) / cbrVndVal) * 100;
+    final lossTbankQr = ((1 / tbankQrRubVnd - cbrVndVal) / cbrVndVal) * 100;
+    final lossTbankTransfer = ((1 / tbankTransferRubVnd - cbrVndVal) / cbrVndVal) * 100;
 
     // Формируем таблицу
     final buffer = StringBuffer();
@@ -113,23 +141,18 @@ class _HomeScreenState extends State<HomeScreen> {
     buffer.writeln('        | ЦБ РФ | Bybit | T-QR  | T-tr');
     buffer.writeln('--------|-------|-------|-------|------');
 
-    // Строка 1: 10k VND/RUB
     buffer.writeln(
         'VND/RUB | ${cbrVndRub10000.toStringAsFixed(2)} | ${bybitVndRub10000.toStringAsFixed(2)} | ${tbankQrVndRub10000.toStringAsFixed(2)} | ${tbankTransferVndRub10000.toStringAsFixed(2)}');
 
-    // Строка 2: USD/RUB
     buffer.writeln(
         'USD/RUB | ${cbrUsdRub.toStringAsFixed(2)} | ${bybitUsdRub.toStringAsFixed(2)} | —     | —');
 
-    // Строка 3: USD/VND
     buffer.writeln(
         'USD/VND | ${cbrUsdVnd.toStringAsFixed(0)} | ${bybitUsdVnd.toStringAsFixed(0)} | —     | —');
 
-    // Строка 4: RUB/VND
     buffer.writeln(
         'RUB/VND | ${cbrRubVnd.toStringAsFixed(1)} | ${bybitRubVnd.toStringAsFixed(1)} | ${tbankQrRubVnd.toStringAsFixed(1)} | ${tbankTransferRubVnd.toStringAsFixed(1)}');
 
-    // Строка 5: Потери (%)
     buffer.writeln(
         'loss %  | 0.00  | ${lossBybit.toStringAsFixed(2)}  | ${lossTbankQr.toStringAsFixed(2)}  | ${lossTbankTransfer.toStringAsFixed(2)}');
 
@@ -138,11 +161,10 @@ class _HomeScreenState extends State<HomeScreen> {
     // Расчёт стоимости для введённой суммы
     final amountVnd = _amountThousands * 1000.0;
     final rubBybit = amountVnd * bybitVndRub;
-    final rubTbankQr = amountVnd * tbankQrVal;
-    final rubTbankTransfer = amountVnd * tbankTransferVal;
+    final rubTbankQr = amountVnd * (1 / tbankQrRubVnd);
+    final rubTbankTransfer = amountVnd * (1 / tbankTransferRubVnd);
     final rubCbr = amountVnd * cbrVndVal;
 
-    // Потери в рублях (абсолютные)
     final lossRubBybit = rubBybit - rubCbr;
     final lossRubTbankQr = rubTbankQr - rubCbr;
     final lossRubTbankTransfer = rubTbankTransfer - rubCbr;
@@ -165,7 +187,22 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Курсы валют')),
+      appBar: AppBar(
+        title: Text('Курсы валют'),
+        actions: [
+          IconButton(
+            icon: _isLoading
+                ? SizedBox(
+              width: 24,
+              height: 24,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+                : Icon(Icons.refresh),
+            onPressed: _isLoading ? null : _refreshAllRates,
+            tooltip: 'Обновить все курсы',
+          ),
+        ],
+      ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
@@ -197,7 +234,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       context,
                       MaterialPageRoute(builder: (_) => SettingsScreen()),
                     );
-                    _loadData();
+                    _loadData(); // перезагружаем данные после возврата
                   },
                   child: Text('Ввести курсы'),
                 ),
