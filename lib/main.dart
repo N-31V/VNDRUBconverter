@@ -5,7 +5,7 @@ import 'services/cbr_api.dart';
 import 'services/tbank_api.dart';
 import 'constants.dart';
 import 'screens/settings_screen.dart';
-import 'widgets/history_chart.dart'; // добавьте в начале файла
+import 'widgets/history_chart.dart';
 
 void main() {
   runApp(MyApp());
@@ -28,11 +28,14 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  // Ключ для доступа к состоянию HistoryChart
+  final GlobalKey<HistoryChartState> _graphKey = GlobalKey<HistoryChartState>();
+
   double? _cbrUsd;
   double? _cbrVnd;
   double? _bybitUsdtVnd;
-  double? _tbankQrVndRub; // VND за 1 RUB (из БД)
-  double? _tbankTransferVndRub; // VND за 1 RUB
+  double? _tbankQrVndRub;
+  double? _tbankTransferVndRub;
 
   int _amountThousands = 10;
   String _resultText = 'Загрузка данных...';
@@ -41,20 +44,18 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    _refreshAllRates(); // обновляем при запуске
+    _refreshAllRates();
   }
 
-
-  // Обновить все курсы (ЦБ + Т-Банк)
+  // Обновить все курсы (ЦБ + Т-Банк) и график
   Future<void> _refreshAllRates() async {
     setState(() => _isLoading = true);
     try {
-      // Обновляем ЦБ
       await CbrApiClient.fetchAndSaveRates();
-      // Обновляем Т-Банк
       await TbankApiClient.fetchAndSaveTbankRates();
-      // Загружаем данные в UI
       await _loadData();
+      // Обновляем график
+      _graphKey.currentState?.refresh();
     } catch (e) {
       setState(() {
         _resultText = 'Ошибка обновления: $e';
@@ -64,7 +65,6 @@ class _HomeScreenState extends State<HomeScreen> {
       if (mounted) setState(() => _isLoading = false);
     }
   }
-
 
   // Загрузка данных из БД
   Future<void> _loadData() async {
@@ -104,38 +104,32 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     final double cbrUsdVal = _cbrUsd!;
-    final double cbrVndVal = _cbrVnd!; // VND/RUB (за 1 VND)
+    final double cbrVndVal = _cbrVnd!;
     final double bybitUsdtVndVal = _bybitUsdtVnd!;
-    final double tbankQrRubVnd = _tbankQrVndRub!; // VND/RUB (сколько VND за 1 RUB)
+    final double tbankQrRubVnd = _tbankQrVndRub!;
     final double tbankTransferRubVnd = _tbankTransferVndRub!;
 
-    // Аппроксимация USDT/RUB = USD/RUB * 1.005
     const double usdtSpread = 1.005;
     final double usdtRubVal = cbrUsdVal * usdtSpread;
 
-    // Производные курсы для каждого источника
-    final cbrVndRub10000 = cbrVndVal * 10000; // 10000 VND в рублях
+    final cbrVndRub10000 = cbrVndVal * 10000;
     final cbrUsdRub = cbrUsdVal;
     final cbrUsdVnd = cbrUsdVal / cbrVndVal;
     final cbrRubVnd = 1 / cbrVndVal;
 
-    final bybitVndRub = usdtRubVal / bybitUsdtVndVal; // VND/RUB
+    final bybitVndRub = usdtRubVal / bybitUsdtVndVal;
     final bybitVndRub10000 = bybitVndRub * 10000;
     final bybitUsdRub = usdtRubVal;
     final bybitUsdVnd = bybitUsdtVndVal;
     final bybitRubVnd = 1 / bybitVndRub;
 
-    // Т-банк QR: у нас уже VND/RUB, пересчитываем
-    final tbankQrVndRub10000 = 10000 / tbankQrRubVnd; // сколько руб за 10000 VND
-
+    final tbankQrVndRub10000 = 10000 / tbankQrRubVnd;
     final tbankTransferVndRub10000 = 10000 / tbankTransferRubVnd;
 
-    // Потери в процентах (относительно ЦБ VND/RUB)
     final lossBybit = ((bybitVndRub - cbrVndVal) / cbrVndVal) * 100;
     final lossTbankQr = ((1 / tbankQrRubVnd - cbrVndVal) / cbrVndVal) * 100;
     final lossTbankTransfer = ((1 / tbankTransferRubVnd - cbrVndVal) / cbrVndVal) * 100;
 
-    // Формируем таблицу
     final buffer = StringBuffer();
 
     buffer.writeln('📊 КУРСЫ ВАЛЮТ\n');
@@ -157,8 +151,6 @@ class _HomeScreenState extends State<HomeScreen> {
     buffer.writeln(
         'loss %  | 0.00  | ${lossBybit.toStringAsFixed(2)}  | ${lossTbankQr.toStringAsFixed(2)}  | ${lossTbankTransfer.toStringAsFixed(2)}');
 
-
-    // Расчёт стоимости для введённой суммы
     final amountVnd = _amountThousands * 1000.0;
     final rubBybit = amountVnd * bybitVndRub;
     final rubTbankQr = amountVnd * (1 / tbankQrRubVnd);
@@ -204,15 +196,15 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
       body: Padding(
-        padding: const EdgeInsets.all(12.0), // уменьшил общий отступ
+        padding: const EdgeInsets.all(12.0),
         child: Column(
           children: [
-            // Таблица – занимает ровно столько, сколько нужно (без прокрутки)
+            // Таблица – занимает ровно столько, сколько нужно
             Flexible(
               fit: FlexFit.loose,
               child: Container(
                 width: double.infinity,
-                padding: EdgeInsets.all(8), // уменьшил отступы внутри
+                padding: EdgeInsets.all(8),
                 decoration: BoxDecoration(
                   color: Colors.grey[900],
                   borderRadius: BorderRadius.circular(8),
@@ -220,7 +212,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: Text(
                   _resultText,
                   style: TextStyle(
-                    fontSize: 12, // уменьшил шрифт для компактности
+                    fontSize: 12,
                     color: Colors.white,
                     fontFamily: 'monospace',
                   ),
@@ -229,7 +221,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
             SizedBox(height: 6),
-            // Поле ввода и кнопка – фиксированная высота
+            // Поле ввода и кнопка
             Row(
               children: [
                 Expanded(
@@ -237,7 +229,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     decoration: InputDecoration(
                       labelText: 'Сумма (тыс. VND)',
                       border: OutlineInputBorder(),
-                      contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8), // компактное поле
+                      contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     ),
                     keyboardType: TextInputType.number,
                     onChanged: (value) {
@@ -258,16 +250,17 @@ class _HomeScreenState extends State<HomeScreen> {
                       context,
                       MaterialPageRoute(builder: (_) => SettingsScreen()),
                     );
-                    _loadData();
+                    await _loadData();
+                    _graphKey.currentState?.refresh();
                   },
                   child: Text('Ввести курсы'),
                 ),
               ],
             ),
             SizedBox(height: 6),
-            // График – занимает всё оставшееся пространство
+            // График – с ключом для обновления
             Expanded(
-              child: HistoryChart(),
+              child: HistoryChart(key: _graphKey),
             ),
           ],
         ),

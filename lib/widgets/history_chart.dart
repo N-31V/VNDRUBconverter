@@ -8,10 +8,10 @@ class HistoryChart extends StatefulWidget {
   const HistoryChart({super.key});
 
   @override
-  State<HistoryChart> createState() => _HistoryChartState();
+  State<HistoryChart> createState() => HistoryChartState();
 }
 
-class _HistoryChartState extends State<HistoryChart> {
+class HistoryChartState extends State<HistoryChart> {
   int _days = 7;
   String _selectedPair = 'VND/RUB (10000)';
   bool _isLoading = false;
@@ -38,6 +38,10 @@ class _HistoryChartState extends State<HistoryChart> {
   @override
   void initState() {
     super.initState();
+    _loadData();
+  }
+
+  void refresh() {
     _loadData();
   }
 
@@ -414,7 +418,7 @@ class _HistoryChartState extends State<HistoryChart> {
               lineBarsData: _series.map((series) {
                 return LineChartBarData(
                   spots: series['spots'] as List<FlSpot>,
-                  isCurved: true,
+                  isCurved: false,
                   color: series['color'],
                   barWidth: 2,
                   dotData: FlDotData(show: false),
