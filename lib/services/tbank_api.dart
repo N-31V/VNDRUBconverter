@@ -21,26 +21,14 @@ class TbankApiClient {
 
       final rates = data['payload']['rates'] as List;
 
-      final qrRateObj = rates.firstWhere(
-            (r) => r['category'] == 'DebitCardsOperations',
-        orElse: () => throw Exception('Категория DebitCardsOperations не найдена'),
-      );
       final transferRateObj = rates.firstWhere(
             (r) => r['category'] == 'DebitCardsTransfers',
         orElse: () => throw Exception('Категория DebitCardsTransfers не найдена'),
       );
 
-      final qrSell = (qrRateObj['buy'] as num).toDouble(); // VND за 1 RUB
       final transferSell = (transferRateObj['buy'] as num).toDouble();
 
       final db = DatabaseHelper();
-      await db.insertRateIfChanged(Rate(
-        base: Currencies.rub,
-        quote: Currencies.vnd,
-        value: qrSell,
-        source: Sources.tbankQr,
-        timestamp: DateTime.now(),
-      ));
       await db.insertRateIfChanged(Rate(
         base: Currencies.rub,
         quote: Currencies.vnd,
@@ -49,9 +37,9 @@ class TbankApiClient {
         timestamp: DateTime.now(),
       ));
 
-      print('Курсы Т-Банка сохранены: QR = $qrSell VND/RUB, Transfer = $transferSell VND/RUB');
+      print('Курс Т-Банка (перевод) сохранён: $transferSell VND/RUB');
     } catch (e) {
-      throw Exception('Ошибка получения курсов Т-Банка: $e');
+      throw Exception('Ошибка получения курса Т-Банка: $e');
     }
   }
 }

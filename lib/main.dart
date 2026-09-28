@@ -47,14 +47,12 @@ class _HomeScreenState extends State<HomeScreen> {
     _refreshAllRates();
   }
 
-  // Обновить все курсы (ЦБ + Т-Банк) и график
   Future<void> _refreshAllRates() async {
     setState(() => _isLoading = true);
     try {
       await CbrApiClient.fetchAndSaveRates();
-      await TbankApiClient.fetchAndSaveTbankRates();
+      await TbankApiClient.fetchAndSaveTbankRates(); // обновляет только tbankTransfer
       await _loadData();
-      // Обновляем график
       _graphKey.currentState?.refresh();
     } catch (e) {
       setState(() {
