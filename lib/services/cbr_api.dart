@@ -1,60 +1,63 @@
+import 'dart:convert';
+
 import 'package:http/http.dart' as http;
 import 'package:xml/xml.dart';
-import '../models/rate.dart';
-import '../services/database_helper.dart';
+
 import '../constants.dart';
+import '../models/rate.dart';
+import 'database_helper.dart';
+import 'rate_fetch_exception.dart';
 
 class CbrApiClient {
-  static const String _url = 'http://www.cbr-xml-daily.ru/daily_utf8.xml';
+  static final _url = Uri.https('www.cbr-xml-daily.ru', '/daily_utf8.xml');
 
-  static Future<void> fetchAndSaveRates() async {
+  static Future<void> fetchAndSaveRates({
+    http.Client? client,
+    Future<void> Function(Rate)? saveRate,
+    Duration timeout = const Duration(seconds: 15),
+  }) async {
+    final activeClient = client ?? http.Client();
     try {
-      final response = await http.get(Uri.parse(_url));
+      final response = await activeClient.get(_url).timeout(timeout);
       if (response.statusCode != 200) {
-        throw Exception('Ошибка загрузки: ${response.statusCode}');
+        throw RateFetchException('Сервер вернул HTTP ${response.statusCode}');
       }
-
-      final document = XmlDocument.parse(response.body);
-
-      // USD
-      final usdNode = document.findAllElements('Valute').firstWhere(
-            (node) => node.findElements('CharCode').single.text == 'USD',
-      );
-      final usdValueStr = usdNode.findElements('Value').single.text;
-      final usdNominalStr = usdNode.findElements('Nominal').single.text;
-      final usdValue = double.parse(usdValueStr.replaceFirst(',', '.'));
-      final usdNominal = int.parse(usdNominalStr);
-      final usdRub = usdValue / usdNominal;
-
-      // VND
-      final vndNode = document.findAllElements('Valute').firstWhere(
-            (node) => node.findElements('CharCode').single.text == 'VND',
-      );
-      final vndValueStr = vndNode.findElements('Value').single.text;
-      final vndNominalStr = vndNode.findElements('Nominal').single.text;
-      final vndValue = double.parse(vndValueStr.replaceFirst(',', '.'));
-      final vndNominal = int.parse(vndNominalStr);
-      final vndRub = vndValue / vndNominal;
-
-      final db = DatabaseHelper();
-      await db.insertRateIfChanged(Rate(
-        base: Currencies.usd,
-        quote: Currencies.rub,
-        value: usdRub,
-        source: Sources.cbr,
-        timestamp: DateTime.now(),
-      ));
-      await db.insertRateIfChanged(Rate(
-        base: Currencies.vnd,
-        quote: Currencies.rub,
-        value: vndRub,
-        source: Sources.cbr,
-        timestamp: DateTime.now(),
-      ));
-
-      print('Курсы ЦБ сохранены: USD/RUB = $usdRub, VND/RUB = $vndRub');
-    } catch (e) {
-      throw Exception('Ошибка получения курсов ЦБ: $e');
+      final document = XmlDocument.parse(utf8.decode(response.bodyBytes));
+      final now = DateTime.now();
+      // Validate both values before saving either of them.
+      final rates = [Currencies.usd, Currencies.vnd].map((currency) {
+        final node = document
+            .findAllElements('Valute')
+            .where((node) => node.getElement('CharCode')?.innerText == currency)
+            .firstOrNull;
+        final value = double.tryParse(
+          (node?.getElement('Value')?.innerText ?? '').replaceAll(',', '.'),
+        );
+        final nominal = int.tryParse(
+          node?.getElement('Nominal')?.innerText ?? '',
+        );
+        if (value == null ||
+            !value.isFinite ||
+            value <= 0 ||
+            nominal == null ||
+            nominal <= 0) {
+          throw const FormatException('Invalid CBR rate');
+        }
+        return Rate(
+          base: currency,
+          quote: Currencies.rub,
+          value: value / nominal,
+          source: Sources.cbr,
+          timestamp: now,
+        );
+      }).toList();
+      for (final rate in rates) {
+        await (saveRate ?? DatabaseHelper().insertRateIfChanged)(rate);
+      }
+    } catch (error) {
+      throw RateFetchException.from(error);
+    } finally {
+      if (client == null) activeClient.close();
     }
   }
 }

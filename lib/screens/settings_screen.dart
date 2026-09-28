@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
+
 import '../services/database_helper.dart';
 import '../models/rate.dart';
 import '../constants.dart';
 
 class SettingsScreen extends StatefulWidget {
+  const SettingsScreen({super.key});
+
   @override
-  _SettingsScreenState createState() => _SettingsScreenState();
+  State<SettingsScreen> createState() => _SettingsScreenState();
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
@@ -31,8 +34,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _loadLastValues() async {
     try {
       final db = DatabaseHelper();
-      final bybitQr = await db.getLatestRate(Sources.bybitQr, Currencies.usdt, Currencies.vnd);
-      final tbankQr = await db.getLatestRate(Sources.tbankQr, Currencies.rub, Currencies.vnd);
+      final bybitQr = await db.getLatestRate(
+        Sources.bybitQr,
+        Currencies.usdt,
+        Currencies.vnd,
+      );
+      final tbankQr = await db.getLatestRate(
+        Sources.tbankQr,
+        Currencies.rub,
+        Currencies.vnd,
+      );
 
       if (!mounted) return;
       setState(() {
@@ -45,47 +56,56 @@ class _SettingsScreenState extends State<SettingsScreen> {
         }
       });
     } catch (e) {
-      print('Ошибка загрузки последних курсов: $e');
+      debugPrint('Ошибка загрузки последних курсов: $e');
     }
   }
 
   Future<void> _saveBybitQr() async {
     final value = double.tryParse(_bybitQrController.text.replaceAll(',', '.'));
-    if (value == null || value <= 0) {
+    if (value == null || !value.isFinite || value <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Введите корректный курс USDT/VND (например 24800)')),
+        SnackBar(
+          content: Text('Введите корректный курс USDT/VND (например 24800)'),
+        ),
       );
       return;
     }
     setState(() => _loading = true);
     try {
       final db = DatabaseHelper();
-      await db.insertRateIfChanged(Rate(
-        base: Currencies.usdt,
-        quote: Currencies.vnd,
-        value: value,
-        source: Sources.bybitQr,
-        timestamp: DateTime.now(),
-      ));
+      await db.insertRateIfChanged(
+        Rate(
+          base: Currencies.usdt,
+          quote: Currencies.vnd,
+          value: value,
+          source: Sources.bybitQr,
+          timestamp: DateTime.now(),
+        ),
+      );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Курс Bybit QR сохранён: $value VND за 1 USDT')),
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ошибка: $e')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Ошибка: $e')));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
   }
 
   Future<void> _saveTbankQr() async {
-    final rubPer10000 = double.tryParse(_tbankQrController.text.replaceAll(',', '.'));
-    if (rubPer10000 == null || rubPer10000 <= 0) {
+    final rubPer10000 = double.tryParse(
+      _tbankQrController.text.replaceAll(',', '.'),
+    );
+    if (rubPer10000 == null || !rubPer10000.isFinite || rubPer10000 <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Введите корректный курс (руб за 10000 VND), например 35.60')),
+        SnackBar(
+          content: Text(
+            'Введите корректный курс (руб за 10000 VND), например 35.60',
+          ),
+        ),
       );
       return;
     }
@@ -94,22 +114,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
     setState(() => _loading = true);
     try {
       final db = DatabaseHelper();
-      await db.insertRateIfChanged(Rate(
-        base: Currencies.rub,
-        quote: Currencies.vnd,
-        value: vndPerRub,
-        source: Sources.tbankQr,
-        timestamp: DateTime.now(),
-      ));
+      await db.insertRateIfChanged(
+        Rate(
+          base: Currencies.rub,
+          quote: Currencies.vnd,
+          value: vndPerRub,
+          source: Sources.tbankQr,
+          timestamp: DateTime.now(),
+        ),
+      );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Курс Т-банк QR сохранён: ${rubPer10000.toStringAsFixed(2)} руб за 10000 VND')),
+        SnackBar(
+          content: Text(
+            'Курс Т-банк QR сохранён: ${rubPer10000.toStringAsFixed(2)} руб за 10000 VND',
+          ),
+        ),
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ошибка: $e')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Ошибка: $e')));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -180,7 +205,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 Expanded(
                   child: TextField(
                     controller: controller,
-                    keyboardType: TextInputType.numberWithOptions(decimal: true),
+                    keyboardType: TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
                     decoration: InputDecoration(
                       hintText: hint,
                       border: OutlineInputBorder(),
