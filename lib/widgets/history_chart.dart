@@ -75,9 +75,11 @@ class HistoryChartState extends State<HistoryChart> {
         load(Sources.tbankQr, Currencies.rub, Currencies.vnd, start, now),
         load(Sources.tbankTransfer, Currencies.rub, Currencies.vnd, start, now),
         load(Sources.bybitQr, Currencies.usdt, Currencies.vnd, start, now),
+        load(Sources.bybitQr, Currencies.usdt, Currencies.rub, start, now),
       ]);
       if (!mounted || generation != _loadGeneration) return;
-      final [cbrUsd, cbrVnd, tbankQr, tbankTransfer, bybitQr] = histories;
+      final [cbrUsd, cbrVnd, tbankQr, tbankTransfer, bybitVnd, bybitRub] =
+          histories;
       final series = <_HistoryLine>[];
 
       void addRate(
@@ -123,17 +125,17 @@ class HistoryChartState extends State<HistoryChart> {
             Colors.orange,
           );
           addDerived(
-            cbrUsd,
-            bybitQr,
-            (usd, vnd) => usd * 1.005 / vnd * 10000,
+            bybitRub,
+            bybitVnd,
+            (rub, vnd) => rub / vnd * 10000,
             'Bybit (расч.)',
             Colors.purple,
           );
         case 'USD/RUB':
           addRate(cbrUsd, (v) => v, 'ЦБ РФ', Colors.cyan);
-          addRate(cbrUsd, (v) => v * 1.005, 'Bybit (аппрокс.)', Colors.purple);
+          addRate(bybitRub, (v) => v, 'Bybit USDT', Colors.purple);
         case 'USD/VND':
-          addRate(bybitQr, (v) => v, 'Bybit QR', Colors.purple);
+          addRate(bybitVnd, (v) => v, 'Bybit QR', Colors.purple);
           addDerived(
             cbrUsd,
             cbrVnd,
@@ -146,9 +148,9 @@ class HistoryChartState extends State<HistoryChart> {
           addRate(tbankTransfer, (v) => v, 'Т-банк перевод', Colors.orange);
           addRate(cbrVnd, (v) => 1 / v, 'ЦБ РФ (инв.)', Colors.cyan);
           addDerived(
-            cbrUsd,
-            bybitQr,
-            (usd, vnd) => vnd / (usd * 1.005),
+            bybitRub,
+            bybitVnd,
+            (rub, vnd) => vnd / rub,
             'Bybit (расч.)',
             Colors.purple,
           );

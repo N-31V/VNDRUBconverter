@@ -5,58 +5,112 @@ import '../models/rate.dart';
 import '../constants.dart';
 
 class SettingsScreen extends StatefulWidget {
-  const SettingsScreen({super.key});
+  const SettingsScreen({super.key, this.database});
+
+  final DatabaseHelper? database;
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
+  final _bybitRubController = TextEditingController();
   final _bybitQrController = TextEditingController();
   final _tbankQrController = TextEditingController();
+  final _editedControllers = <TextEditingController>{};
   bool _loading = false;
+
+  DatabaseHelper get _database => widget.database ?? DatabaseHelper();
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadLastValues();
-    });
+    _loadLastValues();
   }
 
   @override
   void dispose() {
+    _bybitRubController.dispose();
     _bybitQrController.dispose();
     _tbankQrController.dispose();
     super.dispose();
   }
 
   Future<void> _loadLastValues() async {
-    try {
-      final db = DatabaseHelper();
-      final bybitQr = await db.getLatestRate(
-        Sources.bybitQr,
-        Currencies.usdt,
-        Currencies.vnd,
-      );
-      final tbankQr = await db.getLatestRate(
-        Sources.tbankQr,
-        Currencies.rub,
-        Currencies.vnd,
-      );
+    await Future.wait([
+      _loadLastValue(
+        controller: _bybitRubController,
+        source: Sources.bybitQr,
+        base: Currencies.usdt,
+        quote: Currencies.rub,
+        format: (value) => value.toString(),
+      ),
+      _loadLastValue(
+        controller: _bybitQrController,
+        source: Sources.bybitQr,
+        base: Currencies.usdt,
+        quote: Currencies.vnd,
+        format: (value) => value.toStringAsFixed(0),
+      ),
+      _loadLastValue(
+        controller: _tbankQrController,
+        source: Sources.tbankQr,
+        base: Currencies.rub,
+        quote: Currencies.vnd,
+        format: (value) => (10000 / value).toStringAsFixed(2),
+      ),
+    ]);
+  }
 
-      if (!mounted) return;
-      setState(() {
-        if (bybitQr != null) {
-          _bybitQrController.text = bybitQr.value.toStringAsFixed(0);
-        }
-        if (tbankQr != null) {
-          // tbankQr.value — VND за 1 RUB, нужно рубли за 10000 VND
-          _tbankQrController.text = (10000 / tbankQr.value).toStringAsFixed(2);
-        }
-      });
+  Future<void> _loadLastValue({
+    required TextEditingController controller,
+    required String source,
+    required String base,
+    required String quote,
+    required String Function(double) format,
+  }) async {
+    try {
+      final rate = await _database.getLatestRate(source, base, quote);
+      if (!mounted || _editedControllers.contains(controller)) return;
+      if (rate != null) controller.text = format(rate.value);
     } catch (e) {
       debugPrint('Ошибка загрузки последних курсов: $e');
+    }
+  }
+
+  Future<void> _saveBybitRub() async {
+    final value = double.tryParse(
+      _bybitRubController.text.replaceAll(',', '.'),
+    );
+    if (value == null || !value.isFinite || value <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Введите корректный курс USDT/RUB (например 92.50)'),
+        ),
+      );
+      return;
+    }
+    setState(() => _loading = true);
+    try {
+      await _database.insertRateIfChanged(
+        Rate(
+          base: Currencies.usdt,
+          quote: Currencies.rub,
+          value: value,
+          source: Sources.bybitQr,
+          timestamp: DateTime.now(),
+        ),
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Курс Bybit сохранён: $value руб за 1 USDT')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Ошибка: $e')));
+    } finally {
+      if (mounted) setState(() => _loading = false);
     }
   }
 
@@ -72,8 +126,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
     setState(() => _loading = true);
     try {
-      final db = DatabaseHelper();
-      await db.insertRateIfChanged(
+      await _database.insertRateIfChanged(
         Rate(
           base: Currencies.usdt,
           quote: Currencies.vnd,
@@ -113,8 +166,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final vndPerRub = 10000 / rubPer10000;
     setState(() => _loading = true);
     try {
-      final db = DatabaseHelper();
-      await db.insertRateIfChanged(
+      await _database.insertRateIfChanged(
         Rate(
           base: Currencies.rub,
           quote: Currencies.vnd,
@@ -151,6 +203,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
             Expanded(
               child: ListView(
                 children: [
+                  _buildInputSection(
+                    title: 'Bybit (USDT/RUB)',
+                    hint: 'например 92.50',
+                    controller: _bybitRubController,
+                    onSave: _saveBybitRub,
+                    isLoading: _loading,
+                  ),
                   _buildInputSection(
                     title: 'Bybit QR (USDT/VND)',
                     hint: 'например 24800',
@@ -205,6 +264,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 Expanded(
                   child: TextField(
                     controller: controller,
+                    onChanged: (_) => _editedControllers.add(controller),
                     keyboardType: TextInputType.numberWithOptions(
                       decimal: true,
                     ),

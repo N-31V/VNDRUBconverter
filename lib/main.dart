@@ -38,6 +38,7 @@ enum _RateKey {
   cbrUsd(Sources.cbr, Currencies.usd, Currencies.rub, 'ЦБ USD'),
   cbrVnd(Sources.cbr, Currencies.vnd, Currencies.rub, 'ЦБ VND'),
   bybit(Sources.bybitQr, Currencies.usdt, Currencies.vnd, 'Bybit QR'),
+  bybitRub(Sources.bybitQr, Currencies.usdt, Currencies.rub, 'Bybit USDT/RUB'),
   tbankQr(Sources.tbankQr, Currencies.rub, Currencies.vnd, 'Т-Банк QR'),
   tbankTransfer(
     Sources.tbankTransfer,
@@ -184,7 +185,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final bybitUsdtVnd = _value(_RateKey.bybit);
     final tbankQrRubVnd = _value(_RateKey.tbankQr);
     final tbankTransferRubVnd = _value(_RateKey.tbankTransfer);
-    final usdtRub = _multiply(cbrUsd, 1.005);
+    final usdtRub = _value(_RateKey.bybitRub);
     final bybitVndRub = _divide(usdtRub, bybitUsdtVnd);
     final tbankQrVndRub = _divide(1, tbankQrRubVnd);
     final tbankTransferVndRub = _divide(1, tbankTransferRubVnd);

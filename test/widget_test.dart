@@ -35,6 +35,13 @@ Map<String, Rate> _savedRates() {
       timestamp: timestamp,
     ),
     Rate(
+      base: Currencies.usdt,
+      quote: Currencies.rub,
+      value: 88.5,
+      source: Sources.bybitQr,
+      timestamp: timestamp,
+    ),
+    Rate(
       base: Currencies.rub,
       quote: Currencies.vnd,
       value: 270,
@@ -94,19 +101,19 @@ void main() {
           return saved[_key(source, base, quote)];
         },
         cbr: () {
-          expect(localReads, 5);
+          expect(localReads, 6);
           cbrStarted = true;
           return cbr.future;
         },
         tbank: () {
-          expect(localReads, 5);
+          expect(localReads, 6);
           tbankStarted = true;
           return tbank.future;
         },
       );
 
       expect(cbrStarted && tbankStarted, isTrue);
-      expect(_results(tester), contains('Bybit:   36.18 ₽'));
+      expect(_results(tester), contains('Bybit:   35.40 ₽'));
       expect(
         _results(tester)
             .split('\n')
@@ -126,7 +133,16 @@ void main() {
       await tester.pump();
       await tester.pump();
 
-      expect(_results(tester), contains('Bybit:   40.20 ₽'));
+      // CBR changes must not change the independent manual USDT purchase rate.
+      expect(_results(tester), contains('Bybit:   35.40 ₽'));
+      expect(
+        _results(tester)
+            .split('\n')
+            .singleWhere((line) => line.startsWith('USD/RUB'))
+            .split('|')
+            .map((cell) => cell.trim()),
+        ['USD/RUB', '100.00', '88.50', '—', '—'],
+      );
       expect(find.text('Т-Банк перевод: обновление…'), findsOneWidget);
 
       tbank.completeError(Exception('CERTIFICATE_VERIFY_FAILED'));
@@ -170,7 +186,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(_results(tester), contains('Bybit:   — ₽'));
+    expect(_results(tester), contains('Bybit:   35.40 ₽ (— ₽)'));
     expect(_results(tester), contains('0.4000 USDT'));
     expect(_results(tester), contains('T-QR:    37.04 ₽ (— ₽)'));
     expect(_results(tester), contains('T-tr:    40.00 ₽ (— ₽)'));
@@ -181,7 +197,83 @@ void main() {
     await tester.pump();
     expect(_results(tester), contains('T-QR:    74.07 ₽'));
     expect(_results(tester), contains('T-tr:    80.00 ₽'));
+    expect(_results(tester), contains('Bybit:   70.80 ₽ (— ₽)'));
     expect(_results(tester), contains('0.8000 USDT'));
+  });
+
+  testWidgets('missing manual USDT/RUB never falls back to CBR', (
+    tester,
+  ) async {
+    final saved = _savedRates()
+      ..remove(_key(Sources.bybitQr, Currencies.usdt, Currencies.rub));
+    await _showDashboard(
+      tester,
+      load: (source, base, quote) async => saved[_key(source, base, quote)],
+      cbr: () async {},
+      tbank: () async {},
+    );
+    await tester.pumpAndSettle();
+
+    expect(_results(tester), contains('Bybit:   — ₽ (— ₽) · 0.4000 USDT'));
+    expect(_results(tester), contains('T-tr:    38.46 ₽'));
+    expect(
+      _results(tester)
+          .split('\n')
+          .singleWhere((line) => line.startsWith('USD/RUB'))
+          .split('|')
+          .map((cell) => cell.trim()),
+      ['USD/RUB', '90.00', '—', '—', '—'],
+    );
+    expect(
+      _results(tester)
+          .split('\n')
+          .singleWhere((line) => line.startsWith('USD/VND'))
+          .split('|')
+          .map((cell) => cell.trim()),
+      ['USD/VND', '25000', '25000', '—', '—'],
+    );
+  });
+
+  testWidgets('reloading either manual Bybit rate recalculates the price', (
+    tester,
+  ) async {
+    final saved = _savedRates();
+    await _showDashboard(
+      tester,
+      load: (source, base, quote) async => saved[_key(source, base, quote)],
+      cbr: () async {},
+      tbank: () async {},
+    );
+    await tester.pumpAndSettle();
+    expect(_results(tester), contains('Bybit:   35.40 ₽'));
+
+    saved[_key(Sources.bybitQr, Currencies.usdt, Currencies.rub)] = Rate(
+      source: Sources.bybitQr,
+      base: Currencies.usdt,
+      quote: Currencies.rub,
+      value: 95.25,
+      timestamp: DateTime(2026, 10, 1),
+    );
+    await tester.tap(find.byTooltip('Обновить все курсы'));
+    await tester.pumpAndSettle();
+    expect(
+      _results(tester),
+      contains('Bybit:   38.10 ₽ (+2.10 ₽) · 0.4000 USDT'),
+    );
+
+    saved[_key(Sources.bybitQr, Currencies.usdt, Currencies.vnd)] = Rate(
+      source: Sources.bybitQr,
+      base: Currencies.usdt,
+      quote: Currencies.vnd,
+      value: 30000,
+      timestamp: DateTime(2026, 10, 1, 12),
+    );
+    await tester.tap(find.byTooltip('Обновить все курсы'));
+    await tester.pumpAndSettle();
+    expect(
+      _results(tester),
+      contains('Bybit:   31.75 ₽ (-4.25 ₽) · 0.3333 USDT'),
+    );
   });
 
   testWidgets(
@@ -201,7 +293,7 @@ void main() {
         await tester.pump();
         expect(_results(tester), contains('25500 VND:'));
         expect(_results(tester), contains('1.0200 USDT'));
-        expect(_results(tester), contains('Bybit:   92.26 ₽'));
+        expect(_results(tester), contains('Bybit:   90.27 ₽'));
       }
       await tester.testTextInput.receiveAction(TextInputAction.done);
       await tester.pump();
@@ -220,7 +312,7 @@ void main() {
         expect(_results(tester), contains('— USDT'));
         expect(_results(tester), isNot(contains('25500 VND:')));
         // Invalid calculator input must not hide the rate table.
-        expect(_results(tester), contains('90.45'));
+        expect(_results(tester), contains('88.50'));
       }
       expect(tester.takeException(), isNull);
     },
@@ -239,7 +331,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(_results(tester), contains('Bybit:   36.18 ₽'));
+    expect(_results(tester), contains('Bybit:   35.40 ₽'));
     expect(_results(tester), contains('T-tr:    — ₽'));
     expect(
       find.textContaining('ошибка чтения сохранённого курса'),
@@ -368,7 +460,7 @@ void main() {
 
       await tester.drag(find.byType(ListView), const Offset(0, -600));
       await tester.pumpAndSettle();
-      expect(historyReads, hasLength(5));
+      expect(historyReads, hasLength(6));
       expect(find.byType(LineChart), findsOneWidget);
       final chart = tester.widget<LineChart>(find.byType(LineChart));
       expect(chart.data.lineBarsData, hasLength(4));

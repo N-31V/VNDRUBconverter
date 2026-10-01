@@ -55,33 +55,33 @@ void main() {
     },
   );
 
-  test('derived history reacts to staggered changes in either input', () {
-    final usdChange = start.add(const Duration(days: 1));
-    final bybitChange = start.add(const Duration(days: 3));
+  test('Bybit history reacts to staggered changes in either manual rate', () {
+    final rubChange = start.add(const Duration(days: 1));
+    final vndChange = start.add(const Duration(days: 3));
     final points = buildDerivedHistory(
       left: [
         observation(start.subtract(const Duration(days: 14)), 90),
-        observation(usdChange, 100),
+        observation(rubChange, 100),
       ],
       right: [
         observation(start.subtract(const Duration(days: 10)), 25000),
-        observation(bybitChange, 26000),
+        observation(vndChange, 26000),
       ],
       from: start,
       to: end,
-      calculate: (usd, bybit) => usd * 1.005 / bybit * 10000,
+      calculate: (rub, vnd) => rub / vnd * 10000,
     );
     expect(points.map((point) => point.timestamp), [
       start,
-      usdChange,
-      bybitChange,
+      rubChange,
+      vndChange,
       end,
     ]);
     expect(points.map((point) => point.value), [
-      90 * 1.005 / 25000 * 10000,
-      100 * 1.005 / 25000 * 10000,
-      100 * 1.005 / 26000 * 10000,
-      100 * 1.005 / 26000 * 10000,
+      90 / 25000 * 10000,
+      100 / 25000 * 10000,
+      100 / 26000 * 10000,
+      100 / 26000 * 10000,
     ]);
   });
 

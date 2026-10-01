@@ -7,7 +7,8 @@ class Currencies {
 
 class Sources {
   static const String cbr = 'cbr';
-  static const String bybitQr = 'bybit_qr'; // ручной ввод курса QR Bybit
+  static const String bybitQr =
+      'bybit_qr'; // ручные курсы Bybit USDT/VND и USDT/RUB
   static const String tbankQr =
       'tbank_qr'; // ручной ввод курса Т-банк (оплата по QR)
   static const String tbankTransfer = 'tbank_transfer'; // API Т-Банка (перевод)
